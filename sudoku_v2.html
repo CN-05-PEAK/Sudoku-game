@@ -1,0 +1,411 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pro Sudoku Master</title>
+    <style>
+        :root {
+            --primary: #4a90e2;
+            --bg: #f8f9fa;
+            --surface: #ffffff;
+            --text: #2d3436;
+            --border: #dfe6e9;
+            --thick-border: #636e72;
+            --highlight: #e8f4ff;
+            --error: #ff7675;
+            --note: #b2bec3;
+        }
+
+        [data-theme="dark"] {
+            --bg: #1e272e;
+            --surface: #2f3640;
+            --text: #f5f6fa;
+            --border: #576574;
+            --thick-border: #c8d6e5;
+            --highlight: #3d4852;
+        }
+
+        body {
+            font-family: 'Segoe UI', system-ui, sans-serif;
+            background-color: var(--bg);
+            color: var(--text);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            margin: 0;
+            padding: 20px;
+            transition: 0.3s;
+        }
+
+        .header { display: flex; gap: 20px; align-items: center; margin-bottom: 20px; }
+        .timer { font-size: 1.5rem; font-weight: bold; font-variant-numeric: tabular-nums; }
+
+        .game-container {
+            display: flex;
+            gap: 30px;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+
+        /* The Grid */
+        #grid {
+            display: grid;
+            grid-template-columns: repeat(9, 50px);
+            grid-template-rows: repeat(9, 50px);
+            border: 3px solid var(--thick-border);
+            user-select: none;
+        }
+
+        .cell {
+            width: 50px;
+            height: 50px;
+            border: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.4rem;
+            cursor: pointer;
+            position: relative;
+            background: var(--surface);
+        }
+
+        /* 3x3 Borders */
+        .cell:nth-child(3n) { border-right: 2px solid var(--thick-border); }
+        .cell:nth-child(9n) { border-right: 1px solid var(--border); }
+        .cell:nth-child(n+19):nth-child(-n+27),
+        .cell:nth-child(n+46):nth-child(-n+54) { border-bottom: 2px solid var(--thick-border); }
+
+        /* Cell States */
+        .cell.fixed { font-weight: 800; color: var(--text); background: rgba(0,0,0,0.05); }
+        .cell.selected { background-color: var(--primary) !important; color: white !important; }
+        .cell.highlight-area { background-color: var(--highlight); }
+        .cell.same-num { background-color: #d1e7ff; border: 1px solid var(--primary); }
+        .cell.error { color: var(--error); text-decoration: underline; }
+
+        /* Notes inside cell */
+        .notes-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+        }
+        .note-num {
+            font-size: 0.6rem;
+            color: var(--note);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        /* Controls */
+        .sidebar {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            min-width: 200px;
+        }
+
+        .numpad {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 8px;
+        }
+
+        button {
+            padding: 12px;
+            border: none;
+            border-radius: 8px;
+            background: var(--surface);
+            color: var(--text);
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            cursor: pointer;
+            font-weight: 600;
+            transition: 0.2s;
+        }
+
+        button:hover { transform: translateY(-2px); box-shadow: 0 4px 8px rgba(0,0,0,0.15); }
+        button.active { background: var(--primary); color: white; }
+
+        .actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+
+        @media (max-width: 500px) {
+            #grid { grid-template-columns: repeat(9, 10vw); grid-template-rows: repeat(9, 10vw); }
+            .cell { width: 10vw; height: 10vw; font-size: 1rem; }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="header">
+        <select id="difficulty" onchange="newGame()">
+            <option value="easy">Easy</option>
+            <option value="medium" selected>Medium</option>
+            <option value="hard">Hard</option>
+        </select>
+        <div class="timer" id="timer">00:00</div>
+        <button onclick="toggleTheme()">🌓 Theme</button>
+    </div>
+
+    <div class="game-container">
+        <div id="grid"></div>
+
+        <div class="sidebar">
+            <div class="actions">
+                <button onclick="undo()">⤺ Undo</button>
+                <button onclick="redo()">⤻ Redo</button>
+                <button id="noteBtn" onclick="toggleNoteMode()">✎ Notes: OFF</button>
+                <button onclick="getHint()">💡 Hint</button>
+            </div>
+
+            <div class="numpad">
+                <button onclick="inputNum(1)">1</button>
+                <button onclick="inputNum(2)">2</button>
+                <button onclick="inputNum(3)">3</button>
+                <button onclick="inputNum(4)">4</button>
+                <button onclick="inputNum(5)">5</button>
+                <button onclick="inputNum(6)">6</button>
+                <button onclick="inputNum(7)">7</button>
+                <button onclick="inputNum(8)">8</button>
+                <button onclick="inputNum(9)">9</button>
+                <button onclick="inputNum(0)" style="grid-column: span 3;">Clear (0)</button>
+            </div>
+            
+            <button onclick="newGame()" style="background: var(--primary); color: white;">New Game</button>
+        </div>
+    </div>
+
+    <script>
+        let board = [], solution = [], initial = [];
+        let history = [], redoStack = [];
+        let selectedCell = null;
+        let isNoteMode = false;
+        let timerSeconds = 0, timerInterval;
+
+        const gridEl = document.getElementById('grid');
+        const timerEl = document.getElementById('timer');
+
+        // --- Core Logic: Generation ---
+        function generateSudoku() {
+            // Start with a solved board
+            let fullGrid = Array(81).fill(0);
+            solve(fullGrid);
+            solution = [...fullGrid];
+
+            // Remove numbers based on difficulty
+            const diffs = { easy: 30, medium: 45, hard: 55 };
+            let toRemove = diffs[document.getElementById('difficulty').value];
+            board = [...solution];
+            initial = Array(81).fill(false);
+
+            let indices = Array.from({length: 81}, (_, i) => i);
+            indices.sort(() => Math.random() - 0.5);
+
+            for (let i = 0; i < toRemove; i++) {
+                board[indices[i]] = 0;
+            }
+
+            for (let i = 0; i < 81; i++) {
+                if (board[i] !== 0) initial[i] = true;
+            }
+        }
+
+        function solve(grid) {
+            for (let i = 0; i < 81; i++) {
+                if (grid[i] === 0) {
+                    let nums = [1,2,3,4,5,6,7,8,9].sort(() => Math.random() - 0.5);
+                    for (let n of nums) {
+                        if (isValid(grid, i, n)) {
+                            grid[i] = n;
+                            if (solve(grid)) return true;
+                            grid[i] = 0;
+                        }
+                    }
+                    return false;
+                }
+            }
+            return true;
+        }
+
+        function isValid(grid, idx, val) {
+            let r = Math.floor(idx / 9), c = idx % 9;
+            for (let i = 0; i < 9; i++) {
+                if (grid[r * 9 + i] === val) return false; // Row
+                if (grid[i * 9 + c] === val) return false; // Col
+            }
+            let br = Math.floor(r / 3) * 3, bc = Math.floor(c / 3) * 3;
+            for (let i = 0; i < 3; i++) {
+                for (let j = 0; j < 3; j++) {
+                    if (grid[(br + i) * 9 + (bc + j)] === val) return false;
+                }
+            }
+            return true;
+        }
+
+        // --- UI Logic ---
+        function render() {
+            gridEl.innerHTML = '';
+            board.forEach((val, i) => {
+                const cell = document.createElement('div');
+                cell.className = 'cell';
+                if (initial[i]) cell.classList.add('fixed');
+                
+                if (val !== 0) {
+                    cell.innerText = val;
+                    if (val !== solution[i] && !initial[i]) cell.classList.add('error');
+                } else {
+                    // Render notes if any
+                    const notes = getNotes(i);
+                    if (notes.length > 0) {
+                        const nGrid = document.createElement('div');
+                        nGrid.className = 'notes-grid';
+                        for (let n = 1; n <= 9; n++) {
+                            const nDiv = document.createElement('div');
+                            nDiv.className = 'note-num';
+                            nDiv.innerText = notes.includes(n) ? n : '';
+                            nGrid.appendChild(nDiv);
+                        }
+                        cell.appendChild(nGrid);
+                    }
+                }
+
+                cell.onclick = () => selectCell(i);
+                gridEl.appendChild(cell);
+            });
+            updateHighlights();
+        }
+
+        function selectCell(idx) {
+            selectedCell = idx;
+            render();
+        }
+
+        function updateHighlights() {
+            if (selectedCell === null) return;
+            const cells = document.querySelectorAll('.cell');
+            const r = Math.floor(selectedCell / 9);
+            const c = selectedCell % 9;
+            const val = board[selectedCell];
+
+            cells.forEach((cell, i) => {
+                const cr = Math.floor(i / 9);
+                const cc = i % 9;
+                const cb = Math.floor(cr/3)*3 + Math.floor(cc/3);
+                const selB = Math.floor(r/3)*3 + Math.floor(c/3);
+
+                if (i === selectedCell) cell.classList.add('selected');
+                else if (cr === r || cc === c || cb === selB) cell.classList.add('highlight-area');
+                
+                if (val !== 0 && board[i] === val) cell.classList.add('same-num');
+            });
+        }
+
+        function inputNum(n) {
+            if (selectedCell === null || initial[selectedCell]) return;
+
+            saveState();
+            if (isNoteMode && n !== 0) {
+                toggleNote(selectedCell, n);
+            } else {
+                board[selectedCell] = n;
+                clearNotes(selectedCell);
+            }
+            render();
+            checkWin();
+        }
+
+        // --- Notes Management ---
+        let cellNotes = {}; // { index: [nums] }
+        function toggleNote(idx, n) {
+            if (!cellNotes[idx]) cellNotes[idx] = [];
+            if (cellNotes[idx].includes(n)) {
+                cellNotes[idx] = cellNotes[idx].filter(x => x !== n);
+            } else {
+                cellNotes[idx].push(n);
+            }
+        }
+        function getNotes(idx) { return cellNotes[idx] || []; }
+        function clearNotes(idx) { delete cellNotes[idx]; }
+
+        function toggleNoteMode() {
+            isNoteMode = !isNoteMode;
+            document.getElementById('noteBtn').innerText = `✎ Notes: ${isNoteMode ? 'ON' : 'OFF'}`;
+            document.getElementById('noteBtn').classList.toggle('active');
+        }
+
+        // --- Undo / Redo ---
+        function saveState() {
+            history.push({ board: [...board], notes: JSON.parse(JSON.stringify(cellNotes)) });
+            redoStack = [];
+        }
+
+        function undo() {
+            if (history.length === 0) return;
+            redoStack.push({ board: [...board], notes: JSON.parse(JSON.stringify(cellNotes)) });
+            const prev = history.pop();
+            board = prev.board;
+            cellNotes = prev.notes;
+            render();
+        }
+
+        function redo() {
+            if (redoStack.length === 0) return;
+            history.push({ board: [...board], notes: JSON.parse(JSON.stringify(cellNotes)) });
+            const next = redoStack.pop();
+            board = next.board;
+            cellNotes = next.notes;
+            render();
+        }
+
+        // --- Features ---
+        function getHint() {
+            if (selectedCell === null || initial[selectedCell]) return;
+            saveState();
+            board[selectedCell] = solution[selectedCell];
+            clearNotes(selectedCell);
+            render();
+        }
+
+        function checkWin() {
+            if (board.every((v, i) => v === solution[i])) {
+                clearInterval(timerInterval);
+                alert(`You won! Time: ${timerEl.innerText}`);
+            }
+        }
+
+        function newGame() {
+            generateSudoku();
+            history = []; redoStack = []; cellNotes = {};
+            selectedCell = null;
+            timerSeconds = 0;
+            clearInterval(timerInterval);
+            timerInterval = setInterval(() => {
+                timerSeconds++;
+                const m = Math.floor(timerSeconds / 60).toString().padStart(2, '0');
+                const s = (timerSeconds % 60).toString().padStart(2, '0');
+                timerEl.innerText = `${m}:${s}`;
+            }, 1000);
+            render();
+        }
+
+        function toggleTheme() {
+            const theme = document.body.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+            document.body.setAttribute('data-theme', theme);
+        }
+
+        // Keyboard Support
+        window.addEventListener('keydown', (e) => {
+            if (e.key >= '1' && e.key <= '9') inputNum(parseInt(e.key));
+            if (e.key === '0' || e.key === 'Backspace') inputNum(0);
+            if (e.key === 'n') toggleNoteMode();
+            if (e.key === 'ArrowUp' && selectedCell >= 9) selectCell(selectedCell - 9);
+            if (e.key === 'ArrowDown' && selectedCell < 72) selectCell(selectedCell + 9);
+            if (e.key === 'ArrowLeft' && selectedCell % 9 > 0) selectCell(selectedCell - 1);
+            if (e.key === 'ArrowRight' && selectedCell % 9 < 8) selectCell(selectedCell + 1);
+        });
+
+        newGame();
+    </script>
+</body>
+</html>
